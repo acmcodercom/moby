@@ -426,6 +426,13 @@ func (s *containerRouter) postContainersCreate(ctx context.Context, w http.Respo
 		hostConfig.AutoRemove = false
 	}
 
+	// When using API older than 1.32, the client is not able to set
+	// --ipc shareable but expects it to be the default, so let's
+	// explicitly set it here, overriding engine's default-ipc-mode.
+	if hostConfig.IpcMode.IsEmpty() && versions.LessThan(version, "1.32") {
+		hostConfig.IpcMode = container.IpcMode("shareable")
+	}
+
 	ccr, err := s.backend.ContainerCreate(types.ContainerCreateConfig{
 		Name:             name,
 		Config:           config,

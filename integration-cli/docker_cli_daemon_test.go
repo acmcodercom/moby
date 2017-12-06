@@ -3020,8 +3020,12 @@ func (s *DockerDaemonSuite) TestShmSizeReload(c *check.C) {
 }
 
 // this is used to test both "private" and "shareable" daemon default ipc modes
-func testDaemonIpcPrivateShareable(d *daemon.Daemon, c *check.C, mustExist bool) {
+func testDaemonIpcPrivateShareable(d *daemon.Daemon, c *check.C, mustExist bool, api string) {
 	name := "test-ipcmode"
+	if api != "" {
+		os.Setenv("DOCKER_API_VERSION", api)
+		defer os.Unsetenv("DOCKER_API_VERSION")
+	}
 	_, err := d.Cmd("run", "-d", "--name", name, "busybox", "top")
 	c.Assert(err, checker.IsNil)
 
@@ -3042,7 +3046,7 @@ func (s *DockerDaemonSuite) TestDaemonIpcModeShareable(c *check.C) {
 	testRequires(c, DaemonIsLinux, SameHostDaemon)
 
 	s.d.StartWithBusybox(c, "--default-ipc-mode", "shareable")
-	testDaemonIpcPrivateShareable(s.d, c, true)
+	testDaemonIpcPrivateShareable(s.d, c, true, "1.32")
 }
 
 // TestDaemonIpcModePrivate checks that --default-ipc-mode private works as intended.
@@ -3050,7 +3054,17 @@ func (s *DockerDaemonSuite) TestDaemonIpcModePrivate(c *check.C) {
 	testRequires(c, DaemonIsLinux, SameHostDaemon)
 
 	s.d.StartWithBusybox(c, "--default-ipc-mode", "private")
-	testDaemonIpcPrivateShareable(s.d, c, false)
+	testDaemonIpcPrivateShareable(s.d, c, false, "1.32")
+}
+
+// TestDaemonIpcModeOldClient checks that --default-ipc-mode private
+// is ignored for older clients, which expect every container to
+// be shareable.
+func (s *DockerDaemonSuite) TestDaemonIpcModeOldClient(c *check.C) {
+	testRequires(c, DaemonIsLinux, SameHostDaemon)
+
+	s.d.StartWithBusybox(c, "--default-ipc-mode", "private")
+	testDaemonIpcPrivateShareable(s.d, c, true, "1.30")
 }
 
 // used to check if an IpcMode given in config works as intended
@@ -3065,7 +3079,7 @@ func testDaemonIpcFromConfig(s *DockerDaemonSuite, c *check.C, mode string, must
 	c.Assert(err, checker.IsNil)
 
 	s.d.StartWithBusybox(c, "--config-file", f.Name())
-	testDaemonIpcPrivateShareable(s.d, c, mustExist)
+	testDaemonIpcPrivateShareable(s.d, c, mustExist, "1.32")
 }
 
 // TestDaemonIpcModePrivateFromConfig checks that "default-ipc-mode: private" config works as intended.
@@ -3148,6 +3162,8 @@ func (s *DockerDaemonSuite) TestDaemonRestartIpcMode(c *check.C) {
 	file := f.Name()
 	defer os.Remove(file)
 	c.Assert(f.Close(), checker.IsNil)
+	os.Setenv("DOCKER_API_VERSION", "1.32")
+	defer os.Unsetenv("DOCKER_API_VERSION")
 
 	config := []byte(`{"default-ipc-mode": "private"}`)
 	c.Assert(ioutil.WriteFile(file, config, 0644), checker.IsNil)
